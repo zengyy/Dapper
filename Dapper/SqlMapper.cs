@@ -1952,9 +1952,10 @@ namespace Dapper
             return intoBlock == 0 ? 0 : (padFactor - intoBlock);
         }
 
+        // 修改 IN的正则表达式
         private static string GetInListRegex(string name, bool byPosition) => byPosition
             ? (@"(\?)" + Regex.Escape(name) + @"\?(?!\w)(\s+(?i)unknown(?-i))?")
-            : ("([?@:]" + Regex.Escape(name) + @")(?!\w)(\s+(?i)unknown(?-i))?");
+            : (@"(?<=\bIN\b\s*)(?'kh'\(\s*)?([?@:]" + Regex.Escape(name) + @")(?(kh)\s*\))");
 
         /// <summary>
         /// Internal use only.
@@ -2065,16 +2066,18 @@ namespace Dapper
                     {
                         command.CommandText = Regex.Replace(command.CommandText, regexIncludingUnknown, match =>
                         {
-                            var variableName = match.Groups[1].Value;
-                            if (match.Groups[2].Success)
-                            {
-                                // looks like an optimize hint; leave it alone!
-                                return match.Value;
-                            }
-                            else
-                            {
-                                return "(SELECT " + variableName + " WHERE 1 = 0)";
-                            }
+                            //var variableName = match.Groups[1].Value;
+                            return match.Value;
+
+                            //if (match.Groups[2].Success)
+                            //{
+                            //    // looks like an optimize hint; leave it alone!
+                            //    return match.Value;
+                            //}
+                            //else
+                            //{
+                            //    return "(SELECT " + variableName + " WHERE 1 = 0)";
+                            //}
                         }, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant);
                         var dummyParam = command.CreateParameter();
                         dummyParam.ParameterName = namePrefix;
@@ -2086,30 +2089,47 @@ namespace Dapper
                         command.CommandText = Regex.Replace(command.CommandText, regexIncludingUnknown, match =>
                         {
                             var variableName = match.Groups[1].Value;
-                            if (match.Groups[2].Success)
+                            var sb = GetStringBuilder().Append('(').Append(variableName);
+                            if (!byPosition) sb.Append(1);
+                            for (int i = 2; i <= count; i++)
                             {
-                                // looks like an optimize hint; expand it
-                                var suffix = match.Groups[2].Value;
+                                sb.Append(',').Append(variableName);
+                                if (!byPosition) sb.Append(i);
+                            }
 
-                                var sb = GetStringBuilder().Append(variableName).Append(1).Append(suffix);
-                                for (int i = 2; i <= count; i++)
-                                {
-                                    sb.Append(',').Append(variableName).Append(i).Append(suffix);
-                                }
-                                return sb.__ToStringRecycle();
-                            }
-                            else
-                            {
-                                var sb = GetStringBuilder().Append('(').Append(variableName);
-                                if (!byPosition) sb.Append(1);
-                                for (int i = 2; i <= count; i++)
-                                {
-                                    sb.Append(',').Append(variableName);
-                                    if (!byPosition) sb.Append(i);
-                                }
-                                return sb.Append(')').__ToStringRecycle();
-                            }
+                            return sb.Append(')').__ToStringRecycle();
+
+                            //var variableName = match.Groups[1].Value;
+                            //if (match.Groups[2].Success)
+                            //{
+                            //    // looks like an optimize hint; expand it
+                            //    var suffix = match.Groups[2].Value;
+
+                            //    var sb = GetStringBuilder().Append(variableName).Append(1).Append(suffix);
+                            //    for (int i = 2; i <= count; i++)
+                            //    {
+                            //        sb.Append(',').Append(variableName).Append(i).Append(suffix);
+                            //    }
+                            //    return sb.__ToStringRecycle();
+                            //}
+                            //else
+                            //{
+                            //    var sb = GetStringBuilder().Append('(').Append(variableName);
+                            //    if (!byPosition) sb.Append(1);
+                            //    for (int i = 2; i <= count; i++)
+                            //    {
+                            //        sb.Append(',').Append(variableName);
+                            //        if (!byPosition) sb.Append(i);
+                            //    }
+                            //    return sb.Append(')').__ToStringRecycle();
+                            //}
                         }, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+                        // 添加原本的那个参数,且等于1,可以用在语句中表示该参数不为空
+                        var rawParam = command.CreateParameter();
+                        rawParam.ParameterName = namePrefix;
+                        rawParam.Value = 1;
+                        command.Parameters.Add(rawParam);
                     }
                 }
             }
